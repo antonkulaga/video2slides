@@ -52,7 +52,7 @@ video2slides convert video.mp4
 - 🎬 **Smart Frame Extraction** - Extract frames at specified time intervals with intelligent deduplication
 - 🧠 **Content-Aware Filtering** - Uses SSIM (Structural Similarity Index) to skip duplicate slides
 - 🔲 **Corner Masking** - Ignores corner regions to filter out speaker video movements
-- ⚡ **GPU Acceleration** - Automatic GPU acceleration when CUDA is available (with CPU fallback)
+- ⚡ **GPU Support** - Optional GPU acceleration (requires OpenCV with CUDA built from source)
 - 📊 **PowerPoint Generation** - Create professional PowerPoint presentations
 - 📐 **Aspect Ratio Control** - Maintain video aspect ratio or stretch to fill slides
 - ⏱️ **Flexible Configuration** - Customizable frame extraction intervals and similarity thresholds
@@ -287,73 +287,35 @@ Typical processing times for a 37-minute (76MB) MP4 video:
 
 ---
 
-## ⚡ GPU Acceleration
+## ⚡ GPU Acceleration (Optional)
 
-Video2Slides automatically detects and uses GPU acceleration when available, significantly speeding up frame processing.
+Video2Slides can use GPU acceleration for faster processing of high-resolution videos. **By default, the tool runs on CPU**, which works well for most use cases.
 
-### How It Works
+### GPU Support Status
 
-- **Automatic Detection**: The tool automatically detects if your system has CUDA-enabled GPU support
-- **Seamless Fallback**: If no GPU is detected, it automatically falls back to CPU processing
-- **Transparent Operation**: No configuration needed - just install with GPU support and run normally
+**Note**: PyPI's `opencv-python` packages **do not include CUDA support**. To enable GPU acceleration, you need to either:
+- Build OpenCV from source with CUDA (advanced, ~1 hour)
+- Use conda-forge's pre-built OpenCV with CUDA (recommended if needed)
 
-### Performance Benefits
+See [`docs/GPU_SETUP.md`](docs/GPU_SETUP.md) for detailed setup instructions.
 
-With GPU acceleration enabled:
-- **Frame processing**: 3-10x faster for high-resolution videos
-- **Color conversion**: GPU-accelerated BGR to grayscale conversion
-- **Frame resizing**: GPU-accelerated frame downscaling for comparison
+### When GPU Helps
+
+GPU acceleration (3-10x faster) is most beneficial for:
+- 4K and higher resolution videos
+- Batch processing many videos
+- Very long videos (>1 hour)
+
+For typical use cases (1080p presentations), **CPU performance is sufficient**.
 
 ### Usage
 
-**Enable GPU (default):**
-
 ```bash
-# GPU acceleration is enabled by default
+# Default - CPU processing (works out of the box)
 uvx video2slides convert video.mp4
 
-# Or explicitly enable it
+# Enable GPU (only if you've set up CUDA-enabled OpenCV)
 uvx video2slides convert video.mp4 --gpu
-```
-
-**Disable GPU (force CPU):**
-
-```bash
-# Force CPU processing
-uvx video2slides convert video.mp4 --no-gpu
-```
-
-### GPU Requirements
-
-To use GPU acceleration, you need:
-
-1. **NVIDIA GPU** with CUDA support
-2. **CUDA Toolkit** installed (version 11.0 or later recommended)
-3. **OpenCV with CUDA** - Install with:
-
-```bash
-# For GPU support, you need OpenCV built with CUDA
-# This typically requires building OpenCV from source or using a pre-built version
-pip install opencv-contrib-python
-```
-
-**Note**: Standard `opencv-python` may not include CUDA support. If GPU acceleration isn't working:
-- Check if OpenCV was built with CUDA: `python -c "import cv2; print(cv2.cuda.getCudaEnabledDeviceCount())"`
-- If it returns 0, your OpenCV doesn't have CUDA support
-- You may need to build OpenCV from source with CUDA enabled
-
-### Checking GPU Status
-
-The tool will display GPU status when running:
-
-```
-⚡ GPU acceleration: Enabled (CUDA)
-```
-
-or
-
-```
-💻 GPU acceleration: Disabled (CPU only)
 ```
 
 ---
@@ -407,7 +369,12 @@ video2slides/
 
 MIT License - see [LICENSE](LICENSE) file for details.
 
-## 🙏 Contributing
+## 🙏 Acknowledgments
+
+- **[yt-dlp](https://github.com/yt-dlp/yt-dlp)** - Powers the YouTube download feature with excellent video extraction capabilities
+- **[video2ppt](https://github.com/Wangxs404/video2ppt)** - The original idea was loosely inspired by this project, though `video2slides` was written from scratch with a different approach
+
+## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 

@@ -38,14 +38,14 @@ dev = [
     "ruff>=0.14.3",
     "mypy>=1.18.2",
 ]
-# NOTE: opencv-contrib-python from PyPI still does NOT include CUDA support
-# For real GPU acceleration, you need to either:
-# 1. Build OpenCV from source with CUDA enabled
-# 2. Use conda: conda install -c conda-forge opencv
-# 3. Use system OpenCV built with CUDA
-# This extra is provided for convenience but won't enable GPU on its own
+# NOTE: GPU support requires OpenCV built with CUDA, which is NOT available from PyPI
+# PyPI wheels (opencv-python, opencv-contrib-python) do not include CUDA support
+# For GPU acceleration, see docs/GPU_SETUP.md for setup instructions:
+# - Option 1 (Recommended): conda install -c conda-forge opencv
+# - Option 2 (Advanced): Build OpenCV from source with CUDA enabled
+# The 'gpu' extra below provides opencv-contrib-python but won't enable GPU on its own
 gpu = [
-    "opencv-contrib-python>=4.12.0",  # Has more features but still no CUDA from PyPI
+    "opencv-contrib-python>=4.12.0",  # More features, but still no CUDA from PyPI
 ]
 
 [project.scripts]
