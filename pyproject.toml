@@ -28,6 +28,7 @@ dependencies = [
     "typer>=0.20.0",
     "eliot>=1.17.5",
     "scikit-image>=0.25.2",
+    "yt-dlp>=2025.10.22",
 ]
 
 [project.optional-dependencies]
@@ -36,6 +37,15 @@ dev = [
     "pytest-cov>=7.0.0",
     "ruff>=0.14.3",
     "mypy>=1.18.2",
+]
+# NOTE: opencv-contrib-python from PyPI still does NOT include CUDA support
+# For real GPU acceleration, you need to either:
+# 1. Build OpenCV from source with CUDA enabled
+# 2. Use conda: conda install -c conda-forge opencv
+# 3. Use system OpenCV built with CUDA
+# This extra is provided for convenience but won't enable GPU on its own
+gpu = [
+    "opencv-contrib-python>=4.12.0",  # Has more features but still no CUDA from PyPI
 ]
 
 [project.scripts]
@@ -101,6 +111,5 @@ dev = [
     "pytest>=8.4.2",
     "pytest-cov>=7.0.0",
     "ruff>=0.14.3",
-    "yt-dlp>=2025.10.22",
 ]
 

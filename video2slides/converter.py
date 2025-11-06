@@ -1,6 +1,7 @@
 """Video to PowerPoint converter class."""
 
 import os
+import re
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -13,8 +14,113 @@ from pptx.util import Inches
 from skimage.metrics import structural_similarity as ssim
 
 
+class GPUAccelerator:
+    """Manages GPU acceleration for video processing."""
+
+    def __init__(self) -> None:
+        """Initialize GPU accelerator and detect GPU availability."""
+        self.use_gpu = False
+        self.cuda_available = False
+        self._detect_gpu()
+
+    def _detect_gpu(self) -> None:
+        """Detect if GPU/CUDA is available for OpenCV."""
+        try:
+            # Check if OpenCV was built with CUDA support
+            cuda_count = cv2.cuda.getCudaEnabledDeviceCount()
+            if cuda_count > 0:
+                self.cuda_available = True
+                self.use_gpu = True
+                # Get GPU device info
+                device_info = cv2.cuda.getDevice()
+                return
+        except AttributeError:
+            # cv2.cuda module not available
+            pass
+        except Exception:
+            # Any other error during GPU detection
+            pass
+
+        self.cuda_available = False
+        self.use_gpu = False
+
+    def resize_frame(self, frame: np.ndarray, target_size: tuple[int, int]) -> np.ndarray:
+        """
+        Resize frame using GPU if available, otherwise CPU.
+
+        Args:
+            frame: Input frame
+            target_size: (width, height) tuple
+
+        Returns:
+            Resized frame
+        """
+        if self.use_gpu and self.cuda_available:
+            try:
+                # Upload to GPU
+                gpu_frame = cv2.cuda_GpuMat()
+                gpu_frame.upload(frame)
+                # Resize on GPU
+                gpu_resized = cv2.cuda.resize(gpu_frame, target_size)
+                # Download from GPU
+                return gpu_resized.download()
+            except Exception:
+                # Fallback to CPU on error
+                pass
+
+        # CPU fallback
+        return cv2.resize(frame, target_size)
+
+    def cvt_color(self, frame: np.ndarray, conversion: int) -> np.ndarray:
+        """
+        Convert color space using GPU if available, otherwise CPU.
+
+        Args:
+            frame: Input frame
+            conversion: OpenCV color conversion code (e.g., cv2.COLOR_BGR2GRAY)
+
+        Returns:
+            Converted frame
+        """
+        if self.use_gpu and self.cuda_available:
+            try:
+                # Upload to GPU
+                gpu_frame = cv2.cuda_GpuMat()
+                gpu_frame.upload(frame)
+                # Convert color on GPU
+                gpu_converted = cv2.cuda.cvtColor(gpu_frame, conversion)
+                # Download from GPU
+                return gpu_converted.download()
+            except Exception:
+                # Fallback to CPU on error
+                pass
+
+        # CPU fallback
+        return cv2.cvtColor(frame, conversion)
+
+
 class Video2Slides:
     """Video to Slides converter."""
+
+    @staticmethod
+    def _sanitize_filename(filename: str) -> str:
+        """
+        Sanitize filename by replacing problematic characters.
+
+        Args:
+            filename: Original filename
+
+        Returns:
+            Sanitized filename safe for filesystems
+        """
+        # Replace anything that's not alphanumeric, dash, dot, or underscore with underscore
+        # This handles Unicode characters, spaces, commas, and special punctuation
+        sanitized = re.sub(r'[^a-zA-Z0-9_\-\.]', '_', filename)
+        # Replace multiple underscores with single underscore
+        sanitized = re.sub(r'_+', '_', sanitized)
+        # Remove leading/trailing underscores and dots
+        sanitized = sanitized.strip('_.')
+        return sanitized
 
     def __init__(
         self,
@@ -25,6 +131,7 @@ class Video2Slides:
         similarity_threshold: float = 0.95,
         ignore_corners: bool = True,
         corner_size_percent: float = 0.15,
+        use_gpu: bool = True,
     ) -> None:
         """
         Initialize converter.
@@ -37,6 +144,7 @@ class Video2Slides:
             similarity_threshold: SSIM threshold (0-1) for detecting slide changes (higher = more strict)
             ignore_corners: If True, ignore corner regions when comparing frames (useful for speaker video)
             corner_size_percent: Size of corners to ignore as percentage of frame dimensions (0-1)
+            use_gpu: If True, attempt to use GPU acceleration (will fallback to CPU if not available)
         """
         self.video_path = video_path
         self.fps_interval = fps_interval
@@ -49,12 +157,16 @@ class Video2Slides:
         self.video_width: int = 0
         self.video_height: int = 0
 
+        # Initialize GPU accelerator
+        self.gpu_accelerator = GPUAccelerator() if use_gpu else None
+
         if not os.path.exists(video_path):
             raise FileNotFoundError(f"Video file not found: {video_path}")
 
         if output_path is None:
             base_name = Path(video_path).stem
-            output_path = f"{base_name}_slides.pptx"
+            sanitized_name = self._sanitize_filename(base_name)
+            output_path = f"{sanitized_name}.pptx"
 
         # Convert to absolute path
         self.output_path = str(Path(output_path).resolve())
@@ -69,8 +181,11 @@ class Video2Slides:
         Returns:
             Prepared frame for comparison
         """
-        # Convert to grayscale
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        # Convert to grayscale using GPU if available
+        if self.gpu_accelerator and self.gpu_accelerator.use_gpu:
+            gray = self.gpu_accelerator.cvt_color(frame, cv2.COLOR_BGR2GRAY)
+        else:
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
         if self.ignore_corners:
             # Create a mask to ignore corners where speaker typically appears
@@ -112,8 +227,14 @@ class Video2Slides:
         if gray1.shape[0] > target_height:
             scale = target_height / gray1.shape[0]
             target_width = int(gray1.shape[1] * scale)
-            gray1 = cv2.resize(gray1, (target_width, target_height))
-            gray2 = cv2.resize(gray2, (target_width, target_height))
+            
+            # Use GPU-accelerated resize if available
+            if self.gpu_accelerator and self.gpu_accelerator.use_gpu:
+                gray1 = self.gpu_accelerator.resize_frame(gray1, (target_width, target_height))
+                gray2 = self.gpu_accelerator.resize_frame(gray2, (target_width, target_height))
+            else:
+                gray1 = cv2.resize(gray1, (target_width, target_height))
+                gray2 = cv2.resize(gray2, (target_width, target_height))
 
         # Compute SSIM
         similarity_score = ssim(gray1, gray2)
@@ -142,7 +263,14 @@ class Video2Slides:
             fps_interval=self.fps_interval,
             similarity_threshold=self.similarity_threshold,
             ignore_corners=self.ignore_corners,
+            gpu_enabled=self.gpu_accelerator.use_gpu if self.gpu_accelerator else False,
         ) as action:
+            # Log GPU status
+            if self.gpu_accelerator and self.gpu_accelerator.use_gpu:
+                action.log(message_type="gpu_status", status="enabled", device="CUDA")
+            else:
+                action.log(message_type="gpu_status", status="disabled", device="CPU")
+
             # Create temporary directory to store frames
             self.frames_dir = "temp_frames"
             os.makedirs(self.frames_dir, exist_ok=True)
@@ -285,6 +413,12 @@ class Video2Slides:
                     height = Inches(7.5)  # Slide height
 
                 slide.shapes.add_picture(frame_path, left, top, width=width, height=height)
+
+            # Create output directory if it doesn't exist
+            output_dir = Path(self.output_path).parent
+            if not output_dir.exists():
+                print(f"📁 Output directory does not exist, creating: {output_dir.absolute()}")
+                output_dir.mkdir(parents=True, exist_ok=True)
 
             # Save presentation
             prs.save(self.output_path)
